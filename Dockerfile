@@ -1,17 +1,18 @@
-# Use uma imagem base oficial do Python
-FROM python:3.10-slim-buster
+# Use uma imagem base mais robusta do Python
+FROM python:3.10-bullseye
 
 # Define o diretório de trabalho dentro do contêiner
 WORKDIR /app
 
-# Copia os arquivos de dependência para o diretêrio de trabalho
+# Instala dependências do sistema operacional que podem ser necessárias para compilar pacotes
+RUN apt-get update && apt-get install -y build-essential && rm -rf /var/lib/apt/lists/*
+
+# Copia o arquivo de dependências para o diretório de trabalho
 COPY requirements.txt .
 
 # Instala as dependências do Python
-# Garante que pip, setuptools e wheel estejam atualizados
-# Instala as dependências do requirements.txt
-RUN pip install --no-cache-dir --upgrade pip setuptools==65.5.1 wheel==0.41.0 \
-    && pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir --upgrade pip && \
+    pip install --no-cache-dir -r requirements.txt
 
 # Copia o restante do código da aplicação para o diretório de trabalho
 COPY . .
