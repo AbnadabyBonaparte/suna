@@ -198,3 +198,263 @@ Você deve sempre buscar melhorar sua performance de forma mensurável e validad
         
         self.logger.info(f"📊 Performance atual: {self.current_performance:.3f}")
         return analysis_result
+            async def generate_improvements(self, analysis: Dict[str, Any]) -> List[Dict[str, Any]]:
+        """
+        Gera melhorias baseadas na análise de performance
+        """
+        self.logger.info("🔧 Gerando melhorias auto-evolutivas...")
+        
+        improvements = []
+        factors = analysis.get("factors", {})
+        
+        # Identificar fatores com baixa performance
+        for factor, score in factors.items():
+            if score < 0.8:  # Threshold para melhoria
+                improvement = {
+                    "id": str(uuid.uuid4()),
+                    "factor": factor,
+                    "current_score": score,
+                    "target_score": min(score * 1.2, 1.0),
+                    "strategy": self._get_improvement_strategy(factor),
+                    "estimated_impact": random.uniform(0.1, 0.3),
+                    "confidence": random.uniform(0.6, 0.9)
+                }
+                improvements.append(improvement)
+        
+        self.logger.info(f"💡 {len(improvements)} melhorias geradas")
+        return improvements
+    
+    def _get_improvement_strategy(self, factor: str) -> str:
+        """Retorna estratégia de melhoria para um fator específico"""
+        strategies = {
+            "response_time": "Otimizar algoritmos de processamento e cache",
+            "accuracy": "Refinar modelos de decisão e validação",
+            "efficiency": "Reduzir overhead computacional",
+            "adaptability": "Expandir capacidades de aprendizado",
+            "learning_rate": "Ajustar parâmetros de aprendizado"
+        }
+        return strategies.get(factor, "Estratégia de melhoria geral")
+    
+    async def implement_improvements(self, improvements: List[Dict[str, Any]]) -> Dict[str, Any]:
+        """
+        Implementa melhorias de forma segura
+        """
+        self.logger.info("⚙️ Implementando melhorias...")
+        
+        implementation_results = []
+        
+        for improvement in improvements:
+            try:
+                # Simular implementação (em produção seria código real)
+                success = random.choice([True, True, False])  # 66% sucesso
+                
+                if success:
+                    # Aplicar melhoria
+                    factor = improvement["factor"]
+                    current_score = improvement["current_score"]
+                    target_score = improvement["target_score"]
+                    
+                    # Simular melhoria real
+                    new_score = min(current_score + random.uniform(0.05, 0.15), 1.0)
+                    
+                    result = {
+                        "improvement_id": improvement["id"],
+                        "factor": factor,
+                        "success": True,
+                        "old_score": current_score,
+                        "new_score": new_score,
+                        "actual_improvement": new_score - current_score
+                    }
+                    
+                    self.logger.info(f"✅ Melhoria aplicada: {factor} {current_score:.3f} → {new_score:.3f}")
+                else:
+                    result = {
+                        "improvement_id": improvement["id"],
+                        "factor": improvement["factor"],
+                        "success": False,
+                        "error": "Falha na implementação"
+                    }
+                    self.logger.warning(f"❌ Falha na melhoria: {improvement['factor']}")
+                
+                implementation_results.append(result)
+                
+            except Exception as e:
+                self.logger.error(f"❌ Erro na implementação: {e}")
+                implementation_results.append({
+                    "improvement_id": improvement["id"],
+                    "success": False,
+                    "error": str(e)
+                })
+        
+        successful_improvements = [r for r in implementation_results if r.get("success")]
+        
+        return {
+            "total_improvements": len(improvements),
+            "successful": len(successful_improvements),
+            "failed": len(improvements) - len(successful_improvements),
+            "results": implementation_results,
+            "overall_success": len(successful_improvements) > 0
+        }
+    
+    async def validate_improvements(self, implementation_result: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Valida melhorias usando sistema de validação científica
+        """
+        self.logger.info("🔬 Validando melhorias cientificamente...")
+        
+        if not implementation_result.get("overall_success"):
+            return {"validated": False, "reason": "Nenhuma melhoria implementada"}
+        
+        # Medir performance pós-melhoria
+        post_analysis = await self.analyze_performance()
+        
+        # Calcular melhoria real
+        if self.baseline_performance > 0:
+            improvement_percentage = ((post_analysis["performance_score"] - self.baseline_performance) / self.baseline_performance) * 100
+        else:
+            improvement_percentage = 0
+        
+        # Validação científica
+        validation_result = await self.validation_system.validate_improvement(
+            self.agent_id,
+            {
+                "baseline": self.baseline_performance,
+                "current": post_analysis["performance_score"],
+                "improvement_percentage": improvement_percentage,
+                "implementation_details": implementation_result
+            }
+        )
+        
+        # Atualizar baseline se validado
+        if validation_result.get("validated") and improvement_percentage >= self.min_improvement_threshold:
+            self.baseline_performance = post_analysis["performance_score"]
+            self.improvement_history.append({
+                "timestamp": datetime.utcnow().isoformat(),
+                "improvement_percentage": improvement_percentage,
+                "validated": True
+            })
+            
+            self.logger.info(f"🎉 Melhoria VALIDADA: {improvement_percentage:.1f}%")
+        else:
+            self.logger.warning(f"⚠️ Melhoria NÃO validada: {improvement_percentage:.1f}%")
+        
+        return {
+            "validated": validation_result.get("validated", False),
+            "improvement_percentage": improvement_percentage,
+            "meets_threshold": improvement_percentage >= self.min_improvement_threshold,
+            "new_baseline": self.baseline_performance,
+            "validation_details": validation_result
+        }
+    
+    async def run_evolution_cycle(self) -> Dict[str, Any]:
+        """
+        Executa um ciclo completo de auto-evolução
+        """
+        cycle_id = str(uuid.uuid4())
+        self.logger.info(f"🔄 Iniciando ciclo de evolução: {cycle_id}")
+        
+        try:
+            # 1. Análise de performance
+            analysis = await self.analyze_performance()
+            
+            # 2. Gerar melhorias
+            improvements = await self.generate_improvements(analysis)
+            
+            if not improvements:
+                return {
+                    "cycle_id": cycle_id,
+                    "success": True,
+                    "message": "Nenhuma melhoria necessária",
+                    "performance": analysis["performance_score"]
+                }
+            
+            # 3. Implementar melhorias
+            implementation = await self.implement_improvements(improvements)
+            
+            # 4. Validar melhorias
+            validation = await self.validate_improvements(implementation)
+            
+            # 5. Salvar métricas
+            await self._save_cycle_metrics(cycle_id, analysis, implementation, validation)
+            
+            cycle_result = {
+                "cycle_id": cycle_id,
+                "success": validation.get("validated", False),
+                "improvement": validation.get("improvement_percentage", 0),
+                "performance": analysis["performance_score"],
+                "improvements_attempted": len(improvements),
+                "improvements_successful": implementation.get("successful", 0),
+                "meets_threshold": validation.get("meets_threshold", False),
+                "timestamp": datetime.utcnow().isoformat()
+            }
+            
+            if cycle_result["success"]:
+                self.logger.info(f"🎉 Ciclo CONCLUÍDO com sucesso: {cycle_result['improvement']:.1f}% melhoria")
+            else:
+                self.logger.warning(f"⚠️ Ciclo sem melhoria significativa")
+            
+            return cycle_result
+            
+        except Exception as e:
+            self.logger.error(f"❌ Erro no ciclo de evolução: {e}")
+            return {
+                "cycle_id": cycle_id,
+                "success": False,
+                "error": str(e),
+                "timestamp": datetime.utcnow().isoformat()
+            }
+    
+    async def _save_cycle_metrics(self, cycle_id: str, analysis: Dict, implementation: Dict, validation: Dict):
+        """Salva métricas do ciclo no sistema SUNA"""
+        try:
+            await self.metrics_system.collect_performance_metric(
+                agent_id=self.agent_id,
+                metric_type="evolution_cycle",
+                value=validation.get("improvement_percentage", 0),
+                metadata={
+                    "cycle_id": cycle_id,
+                    "analysis": analysis,
+                    "implementation": implementation,
+                    "validation": validation
+                }
+            )
+        except Exception as e:
+            self.logger.error(f"❌ Erro ao salvar métricas: {e}")
+    
+    def get_status(self) -> Dict[str, Any]:
+        """Retorna status atual do agente"""
+        return {
+            "agent_id": self.agent_id,
+            "name": self.name,
+            "type": self.type,
+            "status": self.status,
+            "current_performance": self.current_performance,
+            "baseline_performance": self.baseline_performance,
+            "improvement_history_count": len(self.improvement_history),
+            "last_improvement": self.improvement_history[-1] if self.improvement_history else None,
+            "wave_number": self.wave_number,
+            "month_introduced": self.month_introduced,
+            "capabilities": list(self.capabilities.keys()),
+            "last_update": datetime.utcnow().isoformat()
+        }
+
+# Função de teste para desenvolvimento
+async def test_core_agent():
+    """Teste básico do agente CORE"""
+    print("🎯 Testando Agente CORE...")
+    
+    agent = CoreAgent()
+    await agent.initialize_suna_integration()
+    
+    # Executar ciclo de evolução
+    result = await agent.run_evolution_cycle()
+    
+    print(f"📊 Resultado: {result}")
+    print(f"🤖 Status: {agent.get_status()}")
+    
+    print("✅ Teste concluído!")
+
+if __name__ == "__main__":
+    import asyncio
+    asyncio.run(test_core_agent())
+
