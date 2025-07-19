@@ -1,0 +1,5 @@
+# SUNA-ALSHAM Dependencies
+python-dotenv
+supabase
+postgrest-py
+httpx
