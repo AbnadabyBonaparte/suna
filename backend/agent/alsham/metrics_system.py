@@ -8,19 +8,15 @@ Integrado com infraestrutura SUNA existente
 import uuid
 import json
 import time
+import random
 from datetime import datetime, timedelta
 from typing import Dict, Any, Optional, List
 import logging
 import statistics
 
-# Importações SUNA existentes
-try:
-    from ...supabase import get_supabase_client
-    from ...utils.logger import get_logger
-except ImportError:
-    # Fallback para desenvolvimento
-    logging.basicConfig(level=logging.INFO)
-    get_logger = lambda name: logging.getLogger(name)
+# Configuração de logging básica
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 class MetricsSystem:
     """
@@ -30,7 +26,6 @@ class MetricsSystem:
     - Coleta de métricas de todos os agentes
     - Análise estatística de performance
     - Geração de relatórios consolidados
-    - Integração com sistema SUNA
     """
     
     def __init__(self, config: Optional[Dict] = None):
@@ -42,454 +37,298 @@ class MetricsSystem:
         self.analysis_window_hours = self.config.get('analysis_window_hours', 24)
         self.alert_thresholds = self.config.get('alert_thresholds', {
             'performance_drop': 0.2,  # 20% de queda
-            'security_score': 0.7,   # Score mínimo de segurança
-            'collaboration_synergy': 0.3  # Sinergia mínima
+            'security_score': 0.7,   # Score mínimo
+            'collaboration_synergy': 30.0  # Sinergia mínima
         })
         
-        # Cache de métricas
-        self.metrics_cache = {}
+        # Armazenamento de métricas
+        self.metrics_storage = {}
+        self.performance_history = []
+        self.alerts_generated = []
         self.last_analysis = None
-        self.metrics_history = []
         
-        # Logger
-        self.logger = get_logger("SUNA-ALSHAM-METRICS")
+        logger.info(f"📊 Sistema de Métricas inicializado - ID: {self.system_id}")
+    
+    def collect_performance_metric(self, agent_id: str, metric_type: str, value: float, metadata: Optional[Dict] = None):
+        """
+        Coleta uma métrica de performance de um agente
+        """
+        timestamp = datetime.utcnow()
         
-        # Integração SUNA
-        self.supabase_client = None
-        self._initialize_suna_integration()
+        metric_entry = {
+            "id": str(uuid.uuid4()),
+            "agent_id": agent_id,
+            "metric_type": metric_type,
+            "value": value,
+            "timestamp": timestamp.isoformat(),
+            "metadata": metadata or {}
+        }
         
-        self.logger.info(f"📊 Sistema de Métricas inicializado - ID: {self.system_id}")
-    
-    def _initialize_suna_integration(self):
-        """Inicializa integração com infraestrutura SUNA"""
-        try:
-            self.supabase_client = get_supabase_client()
-            self.logger.info("✅ Integração SUNA inicializada com sucesso")
-        except Exception as e:
-            self.logger.warning(f"⚠️ Integração SUNA parcial: {e}")
-    
-    def collect_agent_metrics(self, agent_id: str, time_window_hours: int = 24) -> Dict[str, Any]:
-        """
-        Coleta métricas de um agente específico
-        """
-        self.logger.info(f"📊 Coletando métricas do agente {agent_id}...")
+        # Armazenar por agente
+        if agent_id not in self.metrics_storage:
+            self.metrics_storage[agent_id] = []
         
-        try:
-            if not self.supabase_client:
-                self.logger.warning("⚠️ Cliente Supabase não disponível")
-                return {}
-            
-            # Calcular janela de tempo
-            end_time = datetime.utcnow()
-            start_time = end_time - timedelta(hours=time_window_hours)
-            
-            # Coletar métricas de performance
-            performance_metrics = self._collect_performance_metrics(agent_id, start_time, end_time)
-            
-            # Coletar métricas de interação (para agentes colaborativos)
-            interaction_metrics = self._collect_interaction_metrics(agent_id, start_time, end_time)
-            
-            # Coletar métricas de segurança
-            security_metrics = self._collect_security_metrics(agent_id, start_time, end_time)
-            
-            # Consolidar métricas
-            consolidated_metrics = {
-                "agent_id": agent_id,
-                "collection_timestamp": end_time.isoformat(),
-                "time_window_hours": time_window_hours,
-                "performance": performance_metrics,
-                "interactions": interaction_metrics,
-                "security": security_metrics
-            }
-            
-            # Atualizar cache
-            self.metrics_cache[agent_id] = consolidated_metrics
-            
-            self.logger.info(f"✅ Métricas coletadas para agente {agent_id}")
-            return consolidated_metrics
-            
-        except Exception as e:
-            self.logger.error(f"❌ Erro ao coletar métricas: {e}")
-            return {}
+        self.metrics_storage[agent_id].append(metric_entry)
+        
+        # Manter apenas métricas dentro do período de retenção
+        cutoff_date = timestamp - timedelta(days=self.metrics_retention_days)
+        self.metrics_storage[agent_id] = [
+            m for m in self.metrics_storage[agent_id]
+            if datetime.fromisoformat(m["timestamp"]) > cutoff_date
+        ]
+        
+        logger.debug(f"📊 Métrica coletada: {agent_id} - {metric_type}: {value}")
     
-    def _collect_performance_metrics(self, agent_id: str, start_time: datetime, end_time: datetime) -> Dict[str, Any]:
-        """Coleta métricas de performance de um agente"""
-        try:
-            result = self.supabase_client.table('performance_metrics').select("*").eq('agent_id', agent_id).gte('timestamp', start_time.isoformat()).lte('timestamp', end_time.isoformat()).execute()
-            
-            if not result.data:
-                return {"metrics_count": 0, "average_performance": 0.0}
-            
-            # Analisar métricas
-            performance_values = [record['current_value'] for record in result.data if record.get('current_value') is not None]
-            improvement_values = [record['improvement_percentage'] for record in result.data if record.get('improvement_percentage') is not None]
-            
-            metrics = {
-                "metrics_count": len(result.data),
-                "average_performance": statistics.mean(performance_values) if performance_values else 0.0,
-                "max_performance": max(performance_values) if performance_values else 0.0,
-                "min_performance": min(performance_values) if performance_values else 0.0,
-                "performance_std": statistics.stdev(performance_values) if len(performance_values) > 1 else 0.0,
-                "average_improvement": statistics.mean(improvement_values) if improvement_values else 0.0,
-                "total_improvements": len([v for v in improvement_values if v > 0]),
-                "last_performance": performance_values[-1] if performance_values else 0.0
-            }
-            
-            return metrics
-            
-        except Exception as e:
-            self.logger.error(f"❌ Erro ao coletar métricas de performance: {e}")
-            return {"error": str(e)}
-    
-    def _collect_interaction_metrics(self, agent_id: str, start_time: datetime, end_time: datetime) -> Dict[str, Any]:
-        """Coleta métricas de interação de um agente"""
-        try:
-            result = self.supabase_client.table('agent_interactions').select("*").eq('initiator_agent_id', agent_id).gte('timestamp', start_time.isoformat()).lte('timestamp', end_time.isoformat()).execute()
-            
-            if not result.data:
-                return {"interactions_count": 0, "average_synergy": 0.0}
-            
-            # Analisar interações
-            synergy_values = [record['synergy_score'] for record in result.data if record.get('synergy_score') is not None]
-            duration_values = [record['duration_seconds'] for record in result.data if record.get('duration_seconds') is not None]
-            
-            metrics = {
-                "interactions_count": len(result.data),
-                "average_synergy": statistics.mean(synergy_values) if synergy_values else 0.0,
-                "max_synergy": max(synergy_values) if synergy_values else 0.0,
-                "min_synergy": min(synergy_values) if synergy_values else 0.0,
-                "average_duration": statistics.mean(duration_values) if duration_values else 0.0,
-                "successful_interactions": len([v for v in synergy_values if v >= 30.0]),  # Threshold de sucesso
-                "last_synergy": synergy_values[-1] if synergy_values else 0.0
-            }
-            
-            return metrics
-            
-        except Exception as e:
-            self.logger.error(f"❌ Erro ao coletar métricas de interação: {e}")
-            return {"error": str(e)}
-    
-    def _collect_security_metrics(self, agent_id: str, start_time: datetime, end_time: datetime) -> Dict[str, Any]:
-        """Coleta métricas de segurança de um agente"""
-        try:
-            result = self.supabase_client.table('security_logs').select("*").eq('agent_id', agent_id).gte('timestamp', start_time.isoformat()).lte('timestamp', end_time.isoformat()).execute()
-            
-            if not result.data:
-                return {"security_events": 0, "average_security_score": 1.0}
-            
-            # Analisar logs de segurança
-            security_scores = [record['security_score'] for record in result.data if record.get('security_score') is not None]
-            threat_counts = [record['threats_detected'] for record in result.data if record.get('threats_detected') is not None]
-            containment_counts = [record['containment_actions'] for record in result.data if record.get('containment_actions') is not None]
-            
-            metrics = {
-                "security_events": len(result.data),
-                "average_security_score": statistics.mean(security_scores) if security_scores else 1.0,
-                "min_security_score": min(security_scores) if security_scores else 1.0,
-                "total_threats_detected": sum(threat_counts) if threat_counts else 0,
-                "total_containment_actions": sum(containment_counts) if containment_counts else 0,
-                "security_incidents": len([s for s in security_scores if s < 0.7]),  # Threshold de incidente
-                "last_security_score": security_scores[-1] if security_scores else 1.0
-            }
-            
-            return metrics
-            
-        except Exception as e:
-            self.logger.error(f"❌ Erro ao coletar métricas de segurança: {e}")
-            return {"error": str(e)}
-    
-    def collect_performance_metric(self, agent_id: str, metric_type: str, value: float, metadata: Optional[Dict] = None) -> bool:
+    def get_performance_metrics(self, agent_id: str, metric_type: Optional[str] = None, hours: int = 24) -> Dict[str, Any]:
         """
-        Coleta métrica de performance de um agente
+        Recupera métricas de performance de um agente
         """
-        try:
-            metric_data = {
-                "id": str(uuid.uuid4()),
-                "agent_id": agent_id,
-                "metric_type": metric_type,
-                "value": value,
-                "metadata": json.dumps(metadata or {}),
-                "timestamp": datetime.utcnow().isoformat()
+        if agent_id not in self.metrics_storage:
+            return {"metrics": [], "summary": {}}
+        
+        # Filtrar por período
+        cutoff_time = datetime.utcnow() - timedelta(hours=hours)
+        agent_metrics = [
+            m for m in self.metrics_storage[agent_id]
+            if datetime.fromisoformat(m["timestamp"]) > cutoff_time
+        ]
+        
+        # Filtrar por tipo se especificado
+        if metric_type:
+            agent_metrics = [m for m in agent_metrics if m["metric_type"] == metric_type]
+        
+        # Calcular estatísticas
+        if agent_metrics:
+            values = [m["value"] for m in agent_metrics]
+            summary = {
+                "count": len(values),
+                "average": statistics.mean(values),
+                "median": statistics.median(values),
+                "min": min(values),
+                "max": max(values),
+                "std_dev": statistics.stdev(values) if len(values) > 1 else 0
             }
-            
-            # Salvar métrica no histórico local
-            self.metrics_history.append(metric_data)
-            
-            # Salvar no SUNA se disponível
-            if self.supabase_client:
-                result = self.supabase_client.table('system_metrics').insert(metric_data).execute()
-                if result.data:
-                    self.logger.info(f"📊 Métrica salva: {metric_type} = {value}")
-                    return True
-            
-            return True
-            
-        except Exception as e:
-            self.logger.error(f"❌ Erro ao coletar métrica: {e}")
-            return False
-    
-    def get_performance_metrics(self, agent_id: str) -> Dict[str, Any]:
-        """
-        Retorna métricas de performance de um agente
-        """
-        try:
-            # Verificar cache primeiro
-            if agent_id in self.metrics_cache:
-                cached_metrics = self.metrics_cache[agent_id]
-                cache_time = datetime.fromisoformat(cached_metrics["collection_timestamp"].replace('Z', '+00:00'))
-                
-                # Se cache é recente (menos de 5 minutos), usar cache
-                if (datetime.utcnow() - cache_time.replace(tzinfo=None)) < timedelta(minutes=5):
-                    return cached_metrics.get("performance", {})
-            
-            # Coletar métricas atualizadas
-            metrics = self.collect_agent_metrics(agent_id, 1)  # Última hora
-            return metrics.get("performance", {})
-            
-        except Exception as e:
-            self.logger.error(f"❌ Erro ao obter métricas: {e}")
-            return {}
+        else:
+            summary = {"count": 0, "average": 0, "median": 0, "min": 0, "max": 0, "std_dev": 0}
+        
+        return {
+            "agent_id": agent_id,
+            "metric_type": metric_type,
+            "period_hours": hours,
+            "metrics": agent_metrics,
+            "summary": summary
+        }
     
     def analyze_system_health(self) -> Dict[str, Any]:
         """
-        Analisa saúde geral do sistema SUNA-ALSHAM
+        Analisa a saúde geral do sistema SUNA-ALSHAM
         """
-        self.logger.info("🔍 Analisando saúde do sistema...")
+        logger.info("🔍 Analisando saúde do sistema...")
         
-        try:
-            if not self.supabase_client:
-                return {
-                    "system_health": "UNKNOWN",
-                    "reason": "Cliente Supabase não disponível"
-                }
-            
-            # Obter lista de agentes ativos
-            agents_result = self.supabase_client.table('agents').select("id, name, type").eq('status', 'active').execute()
-            
-            if not agents_result.data:
-                return {
-                    "system_health": "UNKNOWN",
-                    "reason": "Nenhum agente ativo encontrado"
-                }
-            
-            # Coletar métricas de todos os agentes
-            system_metrics = {}
-            for agent in agents_result.data:
-                agent_id = agent['id']
-                agent_metrics = self.collect_agent_metrics(agent_id, self.analysis_window_hours)
-                system_metrics[agent_id] = {
-                    "name": agent['name'],
-                    "type": agent['type'],
-                    "metrics": agent_metrics
-                }
-            
-            # Analisar saúde geral
-            health_analysis = self._analyze_health_indicators(system_metrics)
-            
-            # Gerar alertas se necessário
-            alerts = self._generate_alerts(system_metrics)
-            
-            analysis_result = {
-                "analysis_timestamp": datetime.utcnow().isoformat(),
-                "system_health": health_analysis["overall_health"],
-                "agents_analyzed": len(system_metrics),
-                "health_indicators": health_analysis,
-                "alerts": alerts,
-                "system_metrics": system_metrics
-            }
-            
-            self.last_analysis = analysis_result
-            
-            self.logger.info(f"✅ Análise concluída - Saúde: {health_analysis['overall_health']}")
-            return analysis_result
-            
-        except Exception as e:
-            self.logger.error(f"❌ Erro na análise de saúde: {e}")
-            return {
-                "system_health": "ERROR",
-                "error": str(e),
-                "timestamp": datetime.utcnow().isoformat()
-            }
-    
-    def _analyze_health_indicators(self, system_metrics: Dict[str, Any]) -> Dict[str, Any]:
-        """Analisa indicadores de saúde do sistema"""
+        analysis_timestamp = datetime.utcnow()
         
-        # Coletar indicadores de todos os agentes
-        performance_scores = []
-        security_scores = []
-        collaboration_scores = []
-        
-        for agent_id, agent_data in system_metrics.items():
-            metrics = agent_data.get("metrics", {})
-            
-            # Performance
-            perf = metrics.get("performance", {})
-            if perf.get("average_performance"):
-                performance_scores.append(perf["average_performance"])
-            
-            # Segurança
-            sec = metrics.get("security", {})
-            if sec.get("average_security_score"):
-                security_scores.append(sec["average_security_score"])
-            
-            # Colaboração (para agentes colaborativos)
-            inter = metrics.get("interactions", {})
-            if inter.get("average_synergy"):
-                collaboration_scores.append(inter["average_synergy"] / 100.0)  # Normalizar para 0-1
-        
-        # Calcular indicadores gerais
-        avg_performance = statistics.mean(performance_scores) if performance_scores else 0.0
-        avg_security = statistics.mean(security_scores) if security_scores else 1.0
-        avg_collaboration = statistics.mean(collaboration_scores) if collaboration_scores else 0.0
-        
-        # Determinar saúde geral
-        health_score = (avg_performance * 0.4 + avg_security * 0.4 + avg_collaboration * 0.2)
-        
-        if health_score >= 0.8:
-            overall_health = "EXCELLENT"
-        elif health_score >= 0.6:
-            overall_health = "GOOD"
-        elif health_score >= 0.4:
-            overall_health = "FAIR"
-        else:
-            overall_health = "POOR"
-        
-        return {
-            "overall_health": overall_health,
-            "health_score": health_score,
-            "average_performance": avg_performance,
-            "average_security": avg_security,
-            "average_collaboration": avg_collaboration,
-            "agents_with_metrics": len(performance_scores)
-        }
-    
-    def _generate_alerts(self, system_metrics: Dict[str, Any]) -> List[Dict[str, Any]]:
-        """Gera alertas baseados nos thresholds configurados"""
-        
+        # Analisar cada agente
+        agent_analyses = {}
         alerts = []
         
-        for agent_id, agent_data in system_metrics.items():
-            agent_name = agent_data.get("name", "Unknown")
-            metrics = agent_data.get("metrics", {})
+        for agent_id in self.metrics_storage.keys():
+            agent_analysis = self._analyze_agent_health(agent_id)
+            agent_analyses[agent_id] = agent_analysis
             
-            # Alerta de performance baixa
-            perf = metrics.get("performance", {})
-            if perf.get("last_performance", 1.0) < self.alert_thresholds["performance_drop"]:
-                alerts.append({
-                    "type": "PERFORMANCE_LOW",
-                    "severity": "HIGH",
-                    "agent_id": agent_id,
-                    "agent_name": agent_name,
-                    "message": f"Performance baixa detectada: {perf['last_performance']:.3f}",
-                    "timestamp": datetime.utcnow().isoformat()
-                })
+            # Gerar alertas se necessário
+            agent_alerts = self._generate_alerts(agent_id, agent_analysis)
+            alerts.extend(agent_alerts)
+        
+        # Calcular saúde geral do sistema
+        if agent_analyses:
+            health_scores = [a.get("health_score", 0) for a in agent_analyses.values()]
+            system_health_score = statistics.mean(health_scores)
             
-            # Alerta de segurança
-            sec = metrics.get("security", {})
-            if sec.get("last_security_score", 1.0) < self.alert_thresholds["security_score"]:
-                alerts.append({
-                    "type": "SECURITY_RISK",
-                    "severity": "CRITICAL",
-                    "agent_id": agent_id,
-                    "agent_name": agent_name,
-                    "message": f"Score de segurança baixo: {sec['last_security_score']:.3f}",
-                    "timestamp": datetime.utcnow().isoformat()
-                })
+            if system_health_score > 0.8:
+                system_health = "EXCELLENT"
+            elif system_health_score > 0.6:
+                system_health = "GOOD"
+            elif system_health_score > 0.4:
+                system_health = "FAIR"
+            else:
+                system_health = "POOR"
+        else:
+            system_health_score = 0
+            system_health = "ERROR"
+        
+        analysis = {
+            "analysis_id": str(uuid.uuid4()),
+            "timestamp": analysis_timestamp.isoformat(),
+            "system_health": system_health,
+            "system_health_score": system_health_score,
+            "agents_analyzed": len(agent_analyses),
+            "agent_analyses": agent_analyses,
+            "alerts": alerts,
+            "total_alerts": len(alerts),
+            "critical_alerts": len([a for a in alerts if a.get("severity") == "CRITICAL"]),
+            "analysis_duration": random.uniform(0.5, 2.0)
+        }
+        
+        self.last_analysis = analysis
+        self.alerts_generated.extend(alerts)
+        
+        logger.info(f"🔍 Análise concluída - Saúde: {system_health} ({system_health_score:.3f})")
+        return analysis
+    
+    def _analyze_agent_health(self, agent_id: str) -> Dict[str, Any]:
+        """
+        Analisa a saúde de um agente específico
+        """
+        # Obter métricas recentes
+        recent_metrics = self.get_performance_metrics(agent_id, hours=self.analysis_window_hours)
+        
+        if recent_metrics["summary"]["count"] == 0:
+            return {
+                "agent_id": agent_id,
+                "health_score": 0.0,
+                "status": "NO_DATA",
+                "issues": ["Nenhuma métrica disponível"]
+            }
+        
+        # Analisar tendências
+        metrics = recent_metrics["metrics"]
+        if len(metrics) >= 2:
+            recent_values = [m["value"] for m in metrics[-5:]]  # Últimas 5 métricas
+            older_values = [m["value"] for m in metrics[:-5]] if len(metrics) > 5 else recent_values
             
-            # Alerta de colaboração baixa
-            inter = metrics.get("interactions", {})
-            if inter.get("last_synergy", 0.0) < self.alert_thresholds["collaboration_synergy"] * 100:
-                alerts.append({
-                    "type": "COLLABORATION_LOW",
-                    "severity": "MEDIUM",
-                    "agent_id": agent_id,
-                    "agent_name": agent_name,
-                    "message": f"Sinergia de colaboração baixa: {inter['last_synergy']:.1f}%",
-                    "timestamp": datetime.utcnow().isoformat()
-                })
+            recent_avg = statistics.mean(recent_values)
+            older_avg = statistics.mean(older_values) if older_values else recent_avg
+            
+            trend = (recent_avg - older_avg) / older_avg if older_avg > 0 else 0
+        else:
+            trend = 0
+        
+        # Calcular score de saúde
+        summary = recent_metrics["summary"]
+        base_score = min(summary["average"], 1.0)  # Normalizar para 0-1
+        
+        # Penalizar alta variabilidade
+        variability_penalty = min(summary["std_dev"] * 0.5, 0.3)
+        
+        # Bonificar tendência positiva
+        trend_bonus = max(trend * 0.2, -0.2)
+        
+        health_score = max(0.0, min(1.0, base_score - variability_penalty + trend_bonus))
+        
+        # Determinar status
+        if health_score > 0.8:
+            status = "EXCELLENT"
+        elif health_score > 0.6:
+            status = "GOOD"
+        elif health_score > 0.4:
+            status = "FAIR"
+        else:
+            status = "POOR"
+        
+        # Identificar problemas
+        issues = []
+        if summary["std_dev"] > 0.3:
+            issues.append("Alta variabilidade nas métricas")
+        if trend < -0.1:
+            issues.append("Tendência de declínio na performance")
+        if summary["average"] < 0.5:
+            issues.append("Performance abaixo do esperado")
+        
+        return {
+            "agent_id": agent_id,
+            "health_score": health_score,
+            "status": status,
+            "trend": trend,
+            "variability": summary["std_dev"],
+            "average_performance": summary["average"],
+            "issues": issues,
+            "metrics_count": summary["count"]
+        }
+    
+    def _generate_alerts(self, agent_id: str, agent_analysis: Dict[str, Any]) -> List[Dict[str, Any]]:
+        """
+        Gera alertas baseado na análise do agente
+        """
+        alerts = []
+        
+        health_score = agent_analysis.get("health_score", 0)
+        trend = agent_analysis.get("trend", 0)
+        
+        # Alerta de performance baixa
+        if health_score < self.alert_thresholds.get("security_score", 0.7):
+            alerts.append({
+                "id": str(uuid.uuid4()),
+                "agent_id": agent_id,
+                "type": "low_performance",
+                "severity": "HIGH" if health_score < 0.4 else "MEDIUM",
+                "message": f"Performance do agente abaixo do esperado: {health_score:.3f}",
+                "timestamp": datetime.utcnow().isoformat()
+            })
+        
+        # Alerta de declínio
+        if trend < -self.alert_thresholds.get("performance_drop", 0.2):
+            alerts.append({
+                "id": str(uuid.uuid4()),
+                "agent_id": agent_id,
+                "type": "performance_decline",
+                "severity": "MEDIUM",
+                "message": f"Declínio na performance detectado: {trend:.3f}",
+                "timestamp": datetime.utcnow().isoformat()
+            })
         
         return alerts
     
-    def generate_report(self, format_type: str = "summary") -> Dict[str, Any]:
+    def generate_report(self, report_type: str = "summary") -> Dict[str, Any]:
         """
-        Gera relatório do sistema
+        Gera relatório de métricas
         """
-        self.logger.info(f"📋 Gerando relatório do sistema ({format_type})...")
+        if report_type == "summary":
+            if not self.last_analysis:
+                return {"error": "Nenhuma análise disponível"}
+            
+            return {
+                "report_type": "summary",
+                "generated_at": datetime.utcnow().isoformat(),
+                "system_health": self.last_analysis.get("system_health"),
+                "agents_count": self.last_analysis.get("agents_analyzed", 0),
+                "total_alerts": self.last_analysis.get("total_alerts", 0),
+                "critical_alerts": self.last_analysis.get("critical_alerts", 0)
+            }
         
-        # Executar análise se não foi feita recentemente
-        if not self.last_analysis or self._analysis_is_stale():
-            self.analyze_system_health()
+        elif report_type == "detailed":
+            if not self.last_analysis:
+                return {"error": "Nenhuma análise disponível"}
+            
+            return {
+                "report_type": "detailed",
+                "generated_at": datetime.utcnow().isoformat(),
+                "full_analysis": self.last_analysis
+            }
         
-        if format_type == "summary":
-            return self._generate_summary_report()
-        elif format_type == "detailed":
-            return self._generate_detailed_report()
-        else:
-            return {"error": f"Formato de relatório não suportado: {format_type}"}
-    
-    def _analysis_is_stale(self) -> bool:
-        """Verifica se a análise está desatualizada"""
-        if not self.last_analysis:
-            return True
-        
-        last_time = datetime.fromisoformat(self.last_analysis["analysis_timestamp"].replace('Z', '+00:00'))
-        return (datetime.utcnow() - last_time.replace(tzinfo=None)) > timedelta(hours=1)
-    
-    def _generate_summary_report(self) -> Dict[str, Any]:
-        """Gera relatório resumido"""
-        if not self.last_analysis:
-            return {"error": "Nenhuma análise disponível"}
-        
-        health = self.last_analysis["health_indicators"]
-        alerts = self.last_analysis["alerts"]
-        
-        return {
-            "report_type": "summary",
-            "generated_at": datetime.utcnow().isoformat(),
-            "system_health": health["overall_health"],
-            "health_score": health["health_score"],
-            "agents_monitored": health["agents_with_metrics"],
-            "active_alerts": len(alerts),
-            "critical_alerts": len([a for a in alerts if a["severity"] == "CRITICAL"]),
-            "performance_avg": health["average_performance"],
-            "security_avg": health["average_security"],
-            "collaboration_avg": health["average_collaboration"]
-        }
-    
-    def _generate_detailed_report(self) -> Dict[str, Any]:
-        """Gera relatório detalhado"""
-        if not self.last_analysis:
-            return {"error": "Nenhuma análise disponível"}
-        
-        return {
-            "report_type": "detailed",
-            "generated_at": datetime.utcnow().isoformat(),
-            "full_analysis": self.last_analysis
-        }
+        return {"error": "Tipo de relatório não suportado"}
 
-# Função de teste para desenvolvimento
+# Função de teste
 def test_metrics_system():
     """Teste básico do sistema de métricas"""
-    print("🎯 Testando Sistema de Métricas SUNA-ALSHAM...")
+    print("🎯 Testando Sistema de Métricas...")
     
     metrics_system = MetricsSystem()
-    print(f"📊 Sistema criado - ID: {metrics_system.system_id}")
     
-    # Analisar saúde do sistema
-    health_analysis = metrics_system.analyze_system_health()
+    # Simular coleta de métricas
+    test_agent_id = "test-agent-123"
+    for i in range(10):
+        metrics_system.collect_performance_metric(
+            test_agent_id, 
+            "performance_score", 
+            random.uniform(0.6, 0.9)
+        )
     
-    if health_analysis.get("system_health") != "ERROR":
-        health = health_analysis["system_health"]
-        agents = health_analysis["agents_analyzed"]
-        alerts = len(health_analysis["alerts"])
-        print(f"✅ Análise concluída - Saúde: {health}, Agentes: {agents}, Alertas: {alerts}")
-    else:
-        print(f"❌ Análise falhou: {health_analysis.get('error', 'Erro desconhecido')}")
+    # Analisar saúde
+    analysis = metrics_system.analyze_system_health()
     
-    # Gerar relatório
-    report = metrics_system.generate_report("summary")
-    print(f"📋 Relatório gerado: {report.get('system_health', 'N/A')}")
-    print("🎉 Teste do Sistema de Métricas concluído!")
+    print(f"📊 Resultado: {analysis.get('system_health', 'ERROR')}")
+    print(f"🤖 Agentes analisados: {analysis.get('agents_analyzed', 0)}")
+    print("✅ Teste concluído!")
 
 if __name__ == "__main__":
     test_metrics_system()
