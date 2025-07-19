@@ -1,5 +1,5 @@
-# SUNA-ALSHAM Dependencies - Versões Testadas e Estáveis
-python-dotenv==1.0.0
-supabase==2.8.0
-postgrest-py==0.19.3
-httpx==0.27.0
+# SUNA-ALSHAM Dependencies
+python-dotenv
+supabase
+postgrest-py
+httpx
