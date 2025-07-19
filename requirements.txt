@@ -1,5 +1,5 @@
-# SUNA-ALSHAM Dependencies
-python-dotenv
-supabase
-postgrest-py
-httpx
+# SUNA-ALSHAM Dependencies - Versões Fixas Sugeridas pelo Gemini
+python-dotenv==1.0.0
+supabase==1.0.0  # Versão mais antiga e estável do Supabase
+postgrest-py==0.10.3 # Versão compatível com Supabase 1.0.0
+httpx==0.23.0 # Versão compatível com as anteriores
