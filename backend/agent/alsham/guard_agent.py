@@ -8,19 +8,14 @@ Integrado com infraestrutura SUNA existente
 import uuid
 import json
 import time
+import random
 from datetime import datetime
 from typing import Dict, Any, Optional, List
 import logging
 
-# Importações SUNA existentes
-try:
-    from ..api import AgentAPI
-    from ...supabase import get_supabase_client
-    from ...utils.logger import get_logger
-except ImportError:
-    # Fallback para desenvolvimento
-    logging.basicConfig(level=logging.INFO)
-    get_logger = lambda name: logging.getLogger(name)
+# Configuração de logging básica
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 class GuardAgent:
     """
@@ -30,12 +25,11 @@ class GuardAgent:
     - Monitoramento de segurança em tempo real
     - Detecção de anomalias e comportamentos suspeitos
     - Contenção automática de ameaças
-    - Integração com sistema SUNA
     """
     
     def __init__(self, agent_id: Optional[str] = None, config: Optional[Dict] = None):
         self.agent_id = agent_id or str(uuid.uuid4())
-        self.name = "GUARD"
+        self.name = "SUNA-ALSHAM-GUARD"
         self.type = "security"
         self.status = "active"
         self.wave_number = 1
@@ -44,352 +38,301 @@ class GuardAgent:
         # Configurações de segurança
         self.config = config or {}
         self.max_critical_incidents = self.config.get('max_critical_incidents', 0)
-        self.threat_threshold = self.config.get('threat_threshold', 0.7)
-        self.auto_containment = self.config.get('auto_containment', True)
+        self.threat_threshold = self.config.get('threat_threshold', 0.3)
+        self.containment_enabled = self.config.get('containment_enabled', True)
         
         # Métricas de segurança
-        self.security_score = 1.0  # Inicia com segurança máxima
+        self.security_score = 1.0
+        self.threat_level = "LOW"
         self.incidents_detected = []
         self.containment_actions = []
-        self.threat_level = "LOW"
         
+        # Capacidades
         self.capabilities = {
-            "containment": {
-                "automatic_isolation": True,
-                "threat_neutralization": True,
-                "system_lockdown": True
-            },
-            "monitoring": {
-                "real_time_analysis": True,
-                "anomaly_detection": True,
-                "behavior_tracking": True
-            },
-            "response": {
-                "incident_response": True,
-                "emergency_protocols": True,
-                "recovery_procedures": True
-            }
+            "threat_detection": True,
+            "anomaly_analysis": True,
+            "automatic_containment": True,
+            "security_monitoring": True,
+            "incident_response": True
         }
         
-        # Logger
-        self.logger = get_logger(f"SUNA-ALSHAM-{self.name}")
-        
-        # Integração SUNA
-        self.supabase_client = None
-        self.agent_api = None
-        self._initialize_suna_integration()
-        
-        self.logger.info(f"🛡️ Agente {self.name} inicializado - ID: {self.agent_id}")
+        logger.info(f"🛡️ Agente GUARD inicializado - ID: {self.agent_id}")
     
-    def _initialize_suna_integration(self):
-        """Inicializa integração com infraestrutura SUNA"""
+    def run_security_cycle(self) -> Dict[str, Any]:
+        """
+        Executa um ciclo completo de monitoramento de segurança
+        """
+        cycle_id = str(uuid.uuid4())
+        logger.info(f"🔒 Iniciando ciclo de segurança: {cycle_id}")
+        
         try:
-            # Conectar com Supabase SUNA
-            self.supabase_client = get_supabase_client()
+            # 1. Monitoramento do sistema
+            monitoring_result = self.monitor_system()
             
-            # Conectar com API SUNA
-            self.agent_api = AgentAPI()
+            # 2. Detecção de ameaças
+            threats_detected = self.detect_threats(monitoring_result)
             
-            # Registrar agente no sistema SUNA
-            self._register_in_suna_system()
+            # 3. Análise de anomalias
+            anomaly_analysis = self.analyze_anomalies(monitoring_result)
             
-            self.logger.info("✅ Integração SUNA inicializada com sucesso")
-        except Exception as e:
-            self.logger.warning(f"⚠️ Integração SUNA parcial: {e}")
-    
-    def _register_in_suna_system(self):
-        """Registra agente no sistema SUNA existente"""
-        try:
-            agent_data = {
-                "id": self.agent_id,
-                "name": self.name,
-                "type": self.type,
-                "status": self.status,
-                "wave_number": self.wave_number,
-                "month_introduced": self.month_introduced,
-                "capabilities": json.dumps(self.capabilities),
-                "created_at": datetime.utcnow().isoformat(),
-                "metadata": json.dumps({
-                    "system": "SUNA-ALSHAM",
-                    "version": "1.0.0",
-                    "security_agent": True
-                })
+            # 4. Ações de contenção (se necessário)
+            containment_result = self.execute_containment(threats_detected)
+            
+            # 5. Atualizar métricas de segurança
+            self.update_security_metrics(monitoring_result, threats_detected)
+            
+            # Verificar se há incidentes críticos
+            critical_incidents = len([t for t in threats_detected if t.get("severity") == "CRITICAL"])
+            
+            cycle_result = {
+                "cycle_id": cycle_id,
+                "timestamp": datetime.utcnow().isoformat(),
+                "monitoring": monitoring_result,
+                "threats_detected": len(threats_detected),
+                "critical_incidents": critical_incidents,
+                "anomalies_found": len(anomaly_analysis.get("anomalies", [])),
+                "containment_actions": len(containment_result.get("actions", [])),
+                "security_score": self.security_score,
+                "threat_level": self.threat_level,
+                "success": critical_incidents <= self.max_critical_incidents
             }
             
-            if self.supabase_client:
-                # Verificar se agente já existe
-                existing = self.supabase_client.table('agents').select("*").eq('id', self.agent_id).execute()
+            if cycle_result["success"]:
+                logger.info(f"✅ Ciclo de segurança bem-sucedido: {cycle_id}")
+            else:
+                logger.warning(f"⚠️ Incidentes críticos detectados: {critical_incidents}")
                 
-                if not existing.data:
-                    # Criar novo agente
-                    result = self.supabase_client.table('agents').insert(agent_data).execute()
-                    self.logger.info(f"✅ Agente registrado no SUNA: {result.data}")
-                else:
-                    self.logger.info("✅ Agente já existe no sistema SUNA")
-                    
+            return cycle_result
+            
         except Exception as e:
-            self.logger.error(f"❌ Erro ao registrar no SUNA: {e}")
+            logger.error(f"❌ Erro no ciclo de segurança: {e}")
+            return {
+                "cycle_id": cycle_id,
+                "success": False,
+                "error": str(e),
+                "timestamp": datetime.utcnow().isoformat()
+            }
     
-    def monitor_system_security(self) -> Dict[str, Any]:
+    def monitor_system(self) -> Dict[str, Any]:
         """
-        Monitora segurança do sistema em tempo real
+        Monitora o sistema em busca de atividades suspeitas
         """
-        self.logger.info("🔍 Iniciando monitoramento de segurança...")
+        logger.info("👁️ Monitorando sistema...")
         
-        # Simular análise de segurança (em produção seria monitoramento real)
-        import random
-        
-        security_metrics = {
-            "system_integrity": random.uniform(0.8, 1.0),
-            "access_control": random.uniform(0.85, 1.0),
-            "data_protection": random.uniform(0.9, 1.0),
-            "network_security": random.uniform(0.75, 0.95),
-            "agent_behavior": random.uniform(0.7, 1.0)
+        # Simular métricas de monitoramento
+        system_metrics = {
+            "cpu_usage": random.uniform(0.1, 0.9),
+            "memory_usage": random.uniform(0.2, 0.8),
+            "network_activity": random.uniform(0.1, 0.7),
+            "disk_io": random.uniform(0.1, 0.6),
+            "active_processes": random.randint(50, 200),
+            "network_connections": random.randint(10, 100)
         }
         
-        # Detectar anomalias
-        anomalies = []
-        for metric, value in security_metrics.items():
-            if value < self.threat_threshold:
-                anomalies.append({
-                    "metric": metric,
-                    "value": value,
-                    "threshold": self.threat_threshold,
-                    "severity": "HIGH" if value < 0.5 else "MEDIUM"
-                })
+        # Calcular score de segurança baseado nas métricas
+        security_indicators = {
+            "resource_usage_normal": all(v < 0.85 for v in [
+                system_metrics["cpu_usage"], 
+                system_metrics["memory_usage"]
+            ]),
+            "network_activity_normal": system_metrics["network_activity"] < 0.8,
+            "process_count_normal": system_metrics["active_processes"] < 180,
+            "connection_count_normal": system_metrics["network_connections"] < 90
+        }
         
-        # Calcular score de segurança geral
-        self.security_score = sum(security_metrics.values()) / len(security_metrics)
-        
-        # Determinar nível de ameaça
-        if self.security_score >= 0.9:
-            self.threat_level = "LOW"
-        elif self.security_score >= 0.7:
-            self.threat_level = "MEDIUM"
-        else:
-            self.threat_level = "HIGH"
+        normal_indicators = sum(security_indicators.values())
+        security_score = normal_indicators / len(security_indicators)
         
         monitoring_result = {
             "timestamp": datetime.utcnow().isoformat(),
-            "agent_id": self.agent_id,
-            "security_score": self.security_score,
-            "threat_level": self.threat_level,
-            "security_metrics": security_metrics,
-            "anomalies_detected": anomalies,
-            "anomaly_count": len(anomalies)
+            "system_metrics": system_metrics,
+            "security_indicators": security_indicators,
+            "security_score": security_score,
+            "monitoring_duration": random.uniform(1.0, 3.0)
         }
         
-        self.logger.info(f"🛡️ Score de segurança: {self.security_score:.3f} - Nível: {self.threat_level}")
-        
-        if anomalies:
-            self.logger.warning(f"⚠️ {len(anomalies)} anomalias detectadas!")
-        
+        logger.info(f"👁️ Monitoramento concluído - Score: {security_score:.3f}")
         return monitoring_result
     
     def detect_threats(self, monitoring_data: Dict[str, Any]) -> List[Dict[str, Any]]:
         """
         Detecta ameaças baseado nos dados de monitoramento
         """
+        logger.info("🚨 Detectando ameaças...")
+        
         threats = []
+        system_metrics = monitoring_data.get("system_metrics", {})
         
-        # Analisar anomalias para identificar ameaças
-        for anomaly in monitoring_data.get("anomalies_detected", []):
-            threat_score = 1.0 - anomaly["value"]  # Quanto menor o valor, maior a ameaça
-            
-            threat = {
-                "threat_id": str(uuid.uuid4()),
-                "type": f"security_anomaly_{anomaly['metric']}",
-                "severity": anomaly["severity"],
-                "threat_score": threat_score,
-                "source_metric": anomaly["metric"],
-                "detected_at": datetime.utcnow().isoformat(),
-                "requires_containment": threat_score >= 0.5
-            }
-            
-            threats.append(threat)
+        # Detectar uso anômalo de recursos
+        if system_metrics.get("cpu_usage", 0) > 0.9:
+            threats.append({
+                "id": str(uuid.uuid4()),
+                "type": "resource_abuse",
+                "severity": "HIGH",
+                "description": "Uso anômalo de CPU detectado",
+                "metric_value": system_metrics["cpu_usage"],
+                "threshold": 0.9
+            })
         
-        # Detectar ameaças baseadas em padrões
-        if monitoring_data["security_score"] < 0.5:
-            critical_threat = {
-                "threat_id": str(uuid.uuid4()),
-                "type": "critical_system_compromise",
+        if system_metrics.get("memory_usage", 0) > 0.85:
+            threats.append({
+                "id": str(uuid.uuid4()),
+                "type": "memory_leak",
+                "severity": "MEDIUM",
+                "description": "Possível vazamento de memória",
+                "metric_value": system_metrics["memory_usage"],
+                "threshold": 0.85
+            })
+        
+        # Detectar atividade de rede suspeita
+        if system_metrics.get("network_activity", 0) > 0.8:
+            threats.append({
+                "id": str(uuid.uuid4()),
+                "type": "network_anomaly",
+                "severity": "HIGH",
+                "description": "Atividade de rede suspeita",
+                "metric_value": system_metrics["network_activity"],
+                "threshold": 0.8
+            })
+        
+        # Simular detecção aleatória de ameaças críticas (raro)
+        if random.random() < 0.05:  # 5% de chance
+            threats.append({
+                "id": str(uuid.uuid4()),
+                "type": "critical_security_breach",
                 "severity": "CRITICAL",
-                "threat_score": 1.0 - monitoring_data["security_score"],
-                "source_metric": "overall_security",
-                "detected_at": datetime.utcnow().isoformat(),
-                "requires_containment": True
-            }
-            threats.append(critical_threat)
+                "description": "Possível violação de segurança crítica detectada",
+                "metric_value": 1.0,
+                "threshold": 0.0
+            })
         
-        if threats:
-            self.logger.warning(f"🚨 {len(threats)} ameaças detectadas!")
-        else:
-            self.logger.info("✅ Nenhuma ameaça detectada")
-        
+        logger.info(f"🚨 {len(threats)} ameaças detectadas")
         return threats
+    
+    def analyze_anomalies(self, monitoring_data: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Analisa anomalias nos padrões do sistema
+        """
+        logger.info("🔍 Analisando anomalias...")
+        
+        anomalies = []
+        system_metrics = monitoring_data.get("system_metrics", {})
+        
+        # Detectar padrões anômalos
+        for metric, value in system_metrics.items():
+            if isinstance(value, (int, float)):
+                # Simular detecção de anomalia baseada em desvio
+                if value > 0.8 or value < 0.05:
+                    anomalies.append({
+                        "metric": metric,
+                        "value": value,
+                        "anomaly_type": "statistical_outlier",
+                        "confidence": random.uniform(0.6, 0.95)
+                    })
+        
+        analysis = {
+            "timestamp": datetime.utcnow().isoformat(),
+            "anomalies": anomalies,
+            "anomaly_count": len(anomalies),
+            "analysis_confidence": sum(a["confidence"] for a in anomalies) / len(anomalies) if anomalies else 1.0
+        }
+        
+        logger.info(f"🔍 {len(anomalies)} anomalias encontradas")
+        return analysis
     
     def execute_containment(self, threats: List[Dict[str, Any]]) -> Dict[str, Any]:
         """
         Executa ações de contenção para ameaças detectadas
         """
-        if not threats:
-            return {
-                "containment_executed": False,
-                "reason": "Nenhuma ameaça para conter"
-            }
+        if not threats or not self.containment_enabled:
+            return {"actions": [], "containment_success": True}
         
-        self.logger.info(f"🛡️ Executando contenção para {len(threats)} ameaças...")
+        logger.info("🛡️ Executando contenção...")
         
         containment_actions = []
         
         for threat in threats:
-            if not threat.get("requires_containment"):
-                continue
+            severity = threat.get("severity", "LOW")
+            threat_type = threat.get("type", "unknown")
             
-            # Determinar ação de contenção baseada no tipo de ameaça
-            action_type = self._determine_containment_action(threat)
-            
-            action = {
-                "action_id": str(uuid.uuid4()),
-                "threat_id": threat["threat_id"],
-                "action_type": action_type,
-                "executed_at": datetime.utcnow().isoformat(),
-                "success": True,  # Em produção seria resultado real
-                "details": f"Contenção aplicada para {threat['type']}"
-            }
+            # Determinar ação de contenção baseada na severidade
+            if severity == "CRITICAL":
+                action = {
+                    "threat_id": threat["id"],
+                    "action_type": "emergency_shutdown",
+                    "description": "Desligamento de emergência do componente afetado",
+                    "success": random.random() > 0.1  # 90% de sucesso
+                }
+            elif severity == "HIGH":
+                action = {
+                    "threat_id": threat["id"],
+                    "action_type": "resource_throttling",
+                    "description": "Limitação de recursos do processo suspeito",
+                    "success": random.random() > 0.05  # 95% de sucesso
+                }
+            else:
+                action = {
+                    "threat_id": threat["id"],
+                    "action_type": "monitoring_increase",
+                    "description": "Aumento do nível de monitoramento",
+                    "success": True
+                }
             
             containment_actions.append(action)
-            self.logger.info(f"🔒 Ação de contenção executada: {action_type}")
+            
+            if action["success"]:
+                logger.info(f"✅ Contenção bem-sucedida: {action['action_type']}")
+            else:
+                logger.error(f"❌ Falha na contenção: {action['action_type']}")
         
-        # Salvar ações de contenção
+        # Salvar ações no histórico
         self.containment_actions.extend(containment_actions)
         
         containment_result = {
-            "containment_executed": len(containment_actions) > 0,
-            "actions_count": len(containment_actions),
+            "timestamp": datetime.utcnow().isoformat(),
             "actions": containment_actions,
-            "timestamp": datetime.utcnow().isoformat()
+            "total_actions": len(containment_actions),
+            "successful_actions": len([a for a in containment_actions if a["success"]]),
+            "containment_success": all(a["success"] for a in containment_actions)
         }
         
+        logger.info(f"🛡️ {len(containment_actions)} ações de contenção executadas")
         return containment_result
     
-    def _determine_containment_action(self, threat: Dict[str, Any]) -> str:
+    def update_security_metrics(self, monitoring_data: Dict[str, Any], threats: List[Dict[str, Any]]):
         """
-        Determina ação de contenção apropriada para uma ameaça
+        Atualiza métricas de segurança baseado nos resultados
         """
-        threat_type = threat.get("type", "")
-        severity = threat.get("severity", "LOW")
+        # Atualizar score de segurança
+        base_score = monitoring_data.get("security_score", 1.0)
+        threat_penalty = len(threats) * 0.1
         
-        if "critical" in threat_type or severity == "CRITICAL":
-            return "system_lockdown"
-        elif "access_control" in threat_type:
-            return "access_restriction"
-        elif "network" in threat_type:
-            return "network_isolation"
-        elif "agent_behavior" in threat_type:
-            return "agent_suspension"
+        self.security_score = max(0.0, base_score - threat_penalty)
+        
+        # Atualizar nível de ameaça
+        critical_threats = len([t for t in threats if t.get("severity") == "CRITICAL"])
+        high_threats = len([t for t in threats if t.get("severity") == "HIGH"])
+        
+        if critical_threats > 0:
+            self.threat_level = "CRITICAL"
+        elif high_threats > 2:
+            self.threat_level = "HIGH"
+        elif high_threats > 0 or len(threats) > 3:
+            self.threat_level = "MEDIUM"
         else:
-            return "monitoring_enhancement"
-    
-    def save_security_log_to_suna(self, security_data: Dict[str, Any]) -> bool:
-        """
-        Salva log de segurança no sistema SUNA
-        """
-        try:
-            if not self.supabase_client:
-                self.logger.warning("⚠️ Cliente Supabase não disponível")
-                return False
-            
-            # Preparar dados para tabela security_logs
-            security_log = {
-                "id": str(uuid.uuid4()),
-                "agent_id": self.agent_id,
-                "event_type": "security_monitoring",
-                "severity": security_data.get("threat_level", "LOW"),
-                "security_score": security_data.get("security_score", 1.0),
-                "threats_detected": security_data.get("anomaly_count", 0),
-                "containment_actions": len(security_data.get("containment_actions", [])),
-                "timestamp": datetime.utcnow().isoformat(),
-                "details": json.dumps(security_data)
-            }
-            
-            result = self.supabase_client.table('security_logs').insert(security_log).execute()
-            
-            if result.data:
-                self.logger.info(f"✅ Log de segurança salvo no SUNA: {len(result.data)} registros")
-                return True
-            else:
-                self.logger.error("❌ Falha ao salvar log de segurança no SUNA")
-                return False
-                
-        except Exception as e:
-            self.logger.error(f"❌ Erro ao salvar log no SUNA: {e}")
-            return False
-    
-    def run_security_cycle(self) -> Dict[str, Any]:
-        """
-        Executa ciclo completo de segurança
-        """
-        self.logger.info("🔄 Iniciando ciclo de segurança SUNA-ALSHAM...")
+            self.threat_level = "LOW"
         
-        cycle_start = time.time()
-        
-        try:
-            # 1. Monitorar segurança do sistema
-            monitoring_data = self.monitor_system_security()
-            
-            # 2. Detectar ameaças
-            threats = self.detect_threats(monitoring_data)
-            
-            # 3. Executar contenção se necessário
-            containment_result = self.execute_containment(threats)
-            
-            # 4. Salvar no sistema SUNA
-            security_data = {
-                **monitoring_data,
-                "threats": threats,
-                "containment_actions": containment_result.get("actions", [])
-            }
-            suna_saved = self.save_security_log_to_suna(security_data)
-            
-            cycle_duration = time.time() - cycle_start
-            
-            # Determinar sucesso do ciclo
-            critical_incidents = len([t for t in threats if t.get("severity") == "CRITICAL"])
-            cycle_success = critical_incidents <= self.max_critical_incidents
-            
-            cycle_result = {
-                "cycle_id": str(uuid.uuid4()),
-                "agent_id": self.agent_id,
+        # Salvar incidentes
+        for threat in threats:
+            incident = {
                 "timestamp": datetime.utcnow().isoformat(),
-                "duration_seconds": cycle_duration,
-                "monitoring": monitoring_data,
-                "threats_detected": len(threats),
-                "critical_incidents": critical_incidents,
-                "containment": containment_result,
-                "suna_integration": suna_saved,
-                "success": cycle_success
+                "threat": threat,
+                "security_score_at_detection": self.security_score
             }
-            
-            if cycle_result["success"]:
-                self.logger.info(f"🎉 Ciclo de segurança concluído - Score: {self.security_score:.3f}")
-            else:
-                self.logger.error(f"🚨 Ciclo de segurança com incidentes críticos: {critical_incidents}")
-            
-            return cycle_result
-            
-        except Exception as e:
-            self.logger.error(f"❌ Erro no ciclo de segurança: {e}")
-            return {
-                "success": False,
-                "error": str(e),
-                "timestamp": datetime.utcnow().isoformat()
-            }
+            self.incidents_detected.append(incident)
     
     def get_status(self) -> Dict[str, Any]:
-        """
-        Retorna status completo do agente
-        """
+        """Retorna status atual do agente"""
         return {
             "agent_id": self.agent_id,
             "name": self.name,
@@ -399,33 +342,23 @@ class GuardAgent:
             "threat_level": self.threat_level,
             "incidents_detected_count": len(self.incidents_detected),
             "containment_actions_count": len(self.containment_actions),
-            "capabilities": self.capabilities,
-            "suna_integrated": self.supabase_client is not None,
+            "capabilities": list(self.capabilities.keys()),
+            "wave_number": self.wave_number,
+            "month_introduced": self.month_introduced,
             "last_update": datetime.utcnow().isoformat()
         }
 
-# Função de teste para desenvolvimento
+# Função de teste
 def test_guard_agent():
     """Teste básico do agente GUARD"""
-    print("🎯 Testando Agente GUARD SUNA-ALSHAM...")
+    print("🎯 Testando Agente GUARD...")
     
     agent = GuardAgent()
-    print(f"🛡️ Agente criado: {agent.name} - ID: {agent.agent_id}")
-    
-    # Executar ciclo de segurança
     result = agent.run_security_cycle()
     
-    if result.get("success"):
-        security_score = result["monitoring"]["security_score"]
-        threats = result["threats_detected"]
-        print(f"✅ Ciclo concluído - Score: {security_score:.3f}, Ameaças: {threats}")
-    else:
-        print(f"❌ Ciclo falhou: {result.get('error', 'Incidentes críticos detectados')}")
-    
-    # Status final
-    status = agent.get_status()
-    print(f"🛡️ Nível de ameaça: {status['threat_level']}")
-    print("🎉 Teste do Agente GUARD concluído!")
+    print(f"📊 Resultado: {result.get('success', False)}")
+    print(f"🤖 Status: {agent.get_status()}")
+    print("✅ Teste concluído!")
 
 if __name__ == "__main__":
     test_guard_agent()
