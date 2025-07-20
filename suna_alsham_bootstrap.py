@@ -60,11 +60,12 @@ def run_bootstrap():
             cycle_result = integration.run_evolution_cycle()
             
             if cycle_result.get("overall_success"):
-                logger.info(f"✅ Ciclo de evolução {cycle_result.get("cycle_id")} concluído com sucesso.")
+                # LINHA CORRIGIDA: Usando aspas simples dentro da f-string
+                logger.info(f"✅ Ciclo de evolução {cycle_result.get('cycle_id')} concluído com sucesso.")
             else:
-                logger.warning(f"⚠️ Ciclo de evolução {cycle_result.get("cycle_id")} falhou ou teve problemas.")
+                logger.warning(f"⚠️ Ciclo de evolução {cycle_result.get('cycle_id')} falhou ou teve problemas.")
                 if "error" in cycle_result:
-                    logger.error(f"Detalhes do erro: {cycle_result["error"]}")
+                    logger.error(f"Detalhes do erro: {cycle_result['error']}")
 
             # Opcional: Logar o status completo do sistema após cada ciclo
             # status = integration.get_system_status()
