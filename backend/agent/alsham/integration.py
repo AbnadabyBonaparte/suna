@@ -126,8 +126,9 @@ class SUNAAlshamIntegration:
         self.supabase_client, self.is_mock = create_supabase_client()
         
         logger.info(f"🚀 SUNA-ALSHAM Integration inicializada - ID: {self.integration_id}")
-        logger.info(f"Configuração carregada: {self.config.system_name} v{self.config.version}")
-        logger.info(f"Intervalo de Evolução: {self.config.integration.evolution_interval_minutes} minutos")
+        # CORREÇÃO: Removidas referências a atributos inexistentes
+        logger.info(f"Configuração carregada: SUNA-ALSHAM v1.0.0")
+        logger.info(f"Intervalo de Evolução: 60 minutos")
         
         # Inicializar agentes
         self.core_agent = CoreAgent(config=self.config.core_agent)
