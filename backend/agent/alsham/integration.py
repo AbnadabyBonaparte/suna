@@ -1,7 +1,7 @@
 """
-SUNA-ALSHAM Integration Module - VERSÃO CORRIGIDA
+SUNA-ALSHAM Integration Module - VERSÃO FINAL CORRIGIDA
 Módulo principal de integração e orquestração dos agentes auto-evolutivos
-CORREÇÃO: Detecção forçada das variáveis de ambiente do Supabase
+CORREÇÃO: Detecção forçada das variáveis de ambiente do Supabase + Inicialização sem config
 """
 
 import uuid
@@ -126,18 +126,17 @@ class SUNAAlshamIntegration:
         self.supabase_client, self.is_mock = create_supabase_client()
         
         logger.info(f"🚀 SUNA-ALSHAM Integration inicializada - ID: {self.integration_id}")
-        # CORREÇÃO: Removidas referências a atributos inexistentes
         logger.info(f"Configuração carregada: SUNA-ALSHAM v1.0.0")
         logger.info(f"Intervalo de Evolução: 60 minutos")
         
-        # Inicializar agentes
-        self.core_agent = CoreAgent(config=self.config.core_agent)
-        self.learn_agent = LearnAgent(config=self.config.learn_agent)
-        self.guard_agent = GuardAgent(config=self.config.guard_agent)
+        # CORREÇÃO FINAL: Inicializar agentes SEM configuração específica
+        self.core_agent = CoreAgent()
+        self.learn_agent = LearnAgent()
+        self.guard_agent = GuardAgent()
         
-        # Inicializar sistemas de suporte
-        self.metrics_system = MetricsSystem(config=self.config.metrics)
-        self.validation_system = ValidationSystem(config=self.config.validation)
+        # CORREÇÃO FINAL: Inicializar sistemas de suporte SEM configuração específica
+        self.metrics_system = MetricsSystem()
+        self.validation_system = ValidationSystem()
         
         # Estado do sistema
         self.system_status = "initializing"
