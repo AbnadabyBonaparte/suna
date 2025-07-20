@@ -1,77 +1,67 @@
 """
-SUNA-ALSHAM Configuration
-Configurações específicas para agentes auto-evolutivos
-
-Integra com sistema de configuração SUNA existente
+SUNA-ALSHAM Configuration Module
+Carrega e valida as configurações do sistema a partir de variáveis de ambiente.
 """
 
 import os
-import json
-from typing import Dict, Any, Optional, List
-from dataclasses import dataclass, asdict
-from datetime import timedelta
+from dataclasses import dataclass, field
+from typing import List
+
+def _get_env_bool(name: str, default: bool) -> bool:
+    return os.getenv(name, str(default)).lower() in ('true', '1', 't')
 
 @dataclass
-class AgentConfig:
-    """Configuração base para agentes"""
-    name: str
-    type: str
-    enabled: bool = True
-    max_iterations: int = 10
-    timeout_seconds: int = 300
-    retry_attempts: int = 3
-    
-@dataclass
-class CoreAgentConfig(AgentConfig):
-    """Configuração específica do agente CORE"""
-    min_improvement_percentage: float = 20.0
-    max_performance_iterations: int = 5
-    baseline_performance: float = 0.0
-    performance_threshold: float = 0.8
-    auto_improvement_enabled: bool = True
-    
-    def __init__(self, **kwargs):
-        kwargs.setdefault('name', 'CORE')
-        kwargs.setdefault('type', 'self_improving')
-        super().__init__(**kwargs)
+class CoreAgentConfig:
+    enabled: bool = field(default_factory=lambda: _get_env_bool("SUNA_ALSHAM_CORE_ENABLED", True))
+    min_improvement_percentage: float = field(default_factory=lambda: float(os.getenv("SUNA_ALSHAM_CORE_MIN_IMPROVEMENT", 20.0)))
 
 @dataclass
-class LearnAgentConfig(AgentConfig):
-    """Configuração específica do agente LEARN"""
-    min_collaboration_synergy: float = 30.0
-    max_learning_sessions: int = 5
-    collaboration_threshold: float = 0.7
-    
-    def __init__(self, **kwargs):
-        kwargs.setdefault('name', 'LEARN')
-        kwargs.setdefault('type', 'collaborative')
-        super().__init__(**kwargs)
+class LearnAgentConfig:
+    enabled: bool = field(default_factory=lambda: _get_env_bool("SUNA_ALSHAM_LEARN_ENABLED", True))
+    min_synergy_score: float = field(default_factory=lambda: float(os.getenv("SUNA_ALSHAM_LEARN_MIN_SYNERGY", 30.0)))
 
 @dataclass
-class GuardAgentConfig(AgentConfig):
-    """Configuração específica do agente GUARD"""
-    max_critical_incidents: int = 0
-    threat_threshold: float = 0.3
-    containment_enabled: bool = True
+class GuardAgentConfig:
+    enabled: bool = field(default_factory=lambda: _get_env_bool("SUNA_ALSHAM_GUARD_ENABLED", True))
+    max_critical_incidents: int = field(default_factory=lambda: int(os.getenv("SUNA_ALSHAM_GUARD_MAX_INCIDENTS", 0)))
+
+@dataclass
+class MetricsConfig:
+    enabled: bool = field(default_factory=lambda: _get_env_bool("SUNA_ALSHAM_METRICS_ENABLED", True))
+    retention_days: int = field(default_factory=lambda: int(os.getenv("SUNA_ALSHAM_METRICS_RETENTION_DAYS", 30)))
+
+@dataclass
+class ValidationConfig:
+    enabled: bool = field(default_factory=lambda: _get_env_bool("SUNA_ALSHAM_VALIDATION_ENABLED", True))
+    significance_level: float = field(default_factory=lambda: float(os.getenv("SUNA_ALSHAM_VALIDATION_SIGNIFICANCE", 0.05)))
+
+@dataclass
+class IntegrationConfig:
+    system_name: str = "SUNA-ALSHAM"
+    version: str = "1.0.0"
+    auto_start: bool = field(default_factory=lambda: _get_env_bool("SUNA_ALSHAM_AUTO_START", True))
+    evolution_interval_minutes: int = field(default_factory=lambda: int(os.getenv("SUNA_ALSHAM_EVOLUTION_INTERVAL", 60)))
+    debug_mode: bool = field(default_factory=lambda: _get_env_bool("SUNA_ALSHAM_DEBUG", False))
     
-    def __init__(self, **kwargs):
-        kwargs.setdefault('name', 'GUARD')
-        kwargs.setdefault('type', 'security')
-        super().__init__(**kwargs)
+    core_agent: CoreAgentConfig = field(default_factory=CoreAgentConfig)
+    learn_agent: LearnAgentConfig = field(default_factory=LearnAgentConfig)
+    guard_agent: GuardAgentConfig = field(default_factory=GuardAgentConfig)
+    metrics: MetricsConfig = field(default_factory=MetricsConfig)
+    validation: ValidationConfig = field(default_factory=ValidationConfig)
 
-# Configuração global
-SUNA_ALSHAM_CONFIG = {
-    "system_name": "SUNA-ALSHAM",
-    "version": "1.0.0",
-    "auto_start": os.getenv('SUNA_ALSHAM_AUTO_START', 'false').lower() == 'true',
-    "evolution_interval": int(os.getenv('SUNA_ALSHAM_EVOLUTION_INTERVAL', '60')),
-    "agents": {
-        "core": CoreAgentConfig(),
-        "learn": LearnAgentConfig(), 
-        "guard": GuardAgentConfig()
-    }
-}
+# Esta é a classe principal que estava faltando ou com nome errado
+class SUNAAlshamConfig:
+    """
+    Classe principal para carregar e fornecer a configuração do sistema.
+    """
+    def __init__(self, config_file: str = None):
+        # O argumento config_file é mantido para compatibilidade, mas não é usado
+        # pois a configuração é totalmente baseada em variáveis de ambiente.
+        self.config = IntegrationConfig()
 
-def get_config():
-    """Retorna configuração SUNA-ALSHAM"""
-    return SUNA_ALSHAM_CONFIG
+    def get_config(self) -> IntegrationConfig:
+        return self.config
+
+    def reload_config(self):
+        self.config = IntegrationConfig()
+        return self.config
